@@ -1,4 +1,4 @@
-# Stakeholder Analysis (Обновлённая версия под критерии)
+# Stakeholder Analysis
 
 | Stakeholder                     | Influence (1-3) | Interest (1-3) | Communication Strategy          |
 |---------------------------------|-----------------|----------------|--------------------------------|
