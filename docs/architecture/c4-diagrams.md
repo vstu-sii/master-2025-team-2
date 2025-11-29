@@ -10,7 +10,7 @@
 
 ## 2. Контейнерная диаграмма
 
-![Container diagram](container.png)
+![Container diagram](container.jpeg)
 
 ## 3. Выбор и обоснование технологий.
 
