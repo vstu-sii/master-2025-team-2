@@ -33,15 +33,16 @@
 
 ### 1.2. Индексы для производительности
 
-CREATE INDEX idx_user_FIO ON users (FIO);
-CREATE INDEX idx_user_Birthday ON users (Birthday);
-CREATE INDEX idx_user_Login ON users (Login);
-CREATE INDEX idx_Image_path ON Image (path);
-CREATE INDEX idx_chat_id ON chats (id);
-CREATE INDEX idx_chat_created_at ON chats (created_at);
+* idx_user_FIO ON users (FIO);
+* idx_user_Birthday ON users (Birthday);
+* idx_user_Login ON users (Login);
+* idx_Image_path ON Image (path);
+* idx_chat_id ON chats (id);
+* idx_chat_created_at ON chats (created_at);
 
 #### 1.3. ER-диаграмма (dbdiagram.io)
 
+![Er-диаграмма](https://github.com/vstu-sii/master-2025-team-2/blob/main/database/Er-diagram.png)
 
 ## 2. Схема для данных LLM (Промпты и ответы)
 
