@@ -1,0 +1,76 @@
+Авторизация
+@RestController
+@RequestMapping("/auth")
+class AuthController(
+    private val authService: AuthService
+) {
+    @PostMapping("/login")
+    suspend fun login(@RequestBody request: AuthRequest): ResponseEntity<AuthResponse> =
+        ResponseEntity.ok(AuthResponse(authService.login(request.clientId)))
+}
+https://nash.sait.ru/auth/login
+
+
+
+@RestController
+@RequestMapping("/chat")
+class ChatController(
+    private val chatService: ChatService
+) {
+    @PostMapping
+    suspend fun chat(
+        @RequestBody request: ChatRequest,
+        @AuthenticationPrincipal clientId: String
+    ): ResponseEntity<Long> =
+        ResponseEntity.ok(chatService.processChat(
+            request,
+            clientId
+        ))
+
+    @PostMapping("/ask")
+    suspend fun ask(
+        @RequestBody request: AskRequest,
+        @AuthenticationPrincipal clientId: String
+    ): ResponseEntity<ChatResponse> =
+        ResponseEntity.ok(chatService.ask(
+            request,
+            clientId
+        ))
+
+    @PostMapping(
+        "/ask/stream",
+        consumes = [MediaType.MULTIPART_FORM_DATA_VALUE],
+        produces = [MediaType.TEXT_EVENT_STREAM_VALUE]
+    )
+    suspend fun askStream(
+        @RequestPart("prompt") prompt: String,
+        @RequestPart("dbChatId") dbChatId: String,
+        @RequestPart("image", required = false) image: ByteArray?,
+        @AuthenticationPrincipal clientId: String
+    ): Flux<ServerSentEvent<ChatResponse>> {
+        val request = AskRequest(
+            prompt,
+            dbChatId.toLong(),
+            image
+        )
+        return chatService.askStream(
+            request,
+            clientId
+        )
+    }
+
+    @PostMapping("/delete")
+    suspend fun delete(
+        @RequestBody request: DeleteRequest,
+        @AuthenticationPrincipal clientId: String
+    ): ResponseEntity<Boolean> {
+        return ResponseEntity.ok(chatService.deleteChat(
+            request,
+            clientId
+        ))
+    }
+}
+https://nash.sait.ru/chat/ask - генерирует сразу весь ответ
+https://nash.sait.ru/chat/ask/stream - отправляет ответ кусками
+https://nash.sait.ru/auth/delete - удаляет чат из базы данных сервера
+
