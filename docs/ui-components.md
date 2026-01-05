@@ -85,7 +85,7 @@
 
 ## Responsive дизайн (desktop + mobile):
 
-![Responsive_diagram](media/image1.png)
+![Responsive_diagram](/design/Responsive_diagram.png)
 
 ## Состояния интерфейса:
 
@@ -93,16 +93,16 @@
 
 Во время генерации медицинского заключения на экране появляется иконка загрузки.
 
-![Load_interface](media/image2.png)
+![Load_interface](/design/Load_interface.png)
 
 ### 2. Ошибка.
 
 При попытке отправки сообщения с незаполненными обязательными полями появляется сообщение об ошибке с красным текстом, указывающее на поле, которое необходимо заполнить.
 
-![Error_interface](media/image3.png)
+![Error_interface](/design/Error_interface.png)
 
 ### 3. Успех.
 
 При нажатии в окне "Настройки" кнопки "Удалить чаты" на экране появляется уведомление о том что действие прошло успешно.
 
-![Success_interface](media/image4.png)
+![Success_interface](/design/Success_interface.png)
