@@ -1,0 +1,210 @@
+rate_limiting:
+  # Архитектура
+  architecture:
+    strategy: "distributed_sliding_window"
+    storage: "redis"
+    cache_prefix: "rate_limit"
+    
+  # Уровни ограничений
+  tiers:
+    free:
+      description: "Бесплатный тариф (демо)"
+      limits:
+        auth_login:
+          window: 60
+          requests: 5
+        chat_ask:
+          window: 60
+          requests: 10
+        chat_ask_stream:
+          window: 60
+          requests: 5
+        daily_total:
+          window: 86400
+          requests: 50
+    
+    basic:
+      description: "Базовый тариф (врач)"
+      limits:
+        auth_login:
+          window: 60
+          requests: 10
+        chat_ask:
+          window: 60
+          requests: 30
+        chat_ask_stream:
+          window: 60
+          requests: 20
+        daily_total:
+          window: 86400
+          requests: 200
+    
+    professional:
+      description: "Профессиональный тариф (клиника)"
+      limits:
+        auth_login:
+          window: 60
+          requests: 20
+        chat_ask:
+          window: 60
+          requests: 100
+        chat_ask_stream:
+          window: 60
+          requests: 50
+        daily_total:
+          window: 86400
+          requests: 1000
+
+  # Реализация в коде
+  implementation:
+    middleware: "RateLimitMiddleware"
+    config:
+      # Общие настройки
+      enabled: true
+      skip_on_local: false
+      headers:
+        limit: "X-RateLimit-Limit"
+        remaining: "X-RateLimit-Remaining"
+        reset: "X-RateLimit-Reset"
+        retry_after: "Retry-After"
+      
+      # Алгоритм
+      algorithm: "sliding_window_log"
+      precision: "milliseconds"
+      
+      # Исключения
+      exclude_paths:
+        - "/health"
+        - "/metrics"
+        - "/api-docs"
+      
+      exclude_ips:
+        - "127.0.0.1"
+        - "::1"
+      
+      # Логирование
+      logging:
+        enabled: true
+        level: "WARN"
+        log_blocked: true
+
+  # Мониторинг и алерты
+  monitoring:
+    metrics:
+      - "rate_limit.requests.total"
+      - "rate_limit.requests.blocked"
+      - "rate_limit.by_endpoint"
+      - "rate_limit.by_user"
+      - "rate_limit.by_ip"
+    
+    alerts:
+      - name: "High block rate"
+        condition: "rate_limit.requests.blocked > 10% of total"
+        severity: "warning"
+        
+      - name: "User limit exceeded"
+        condition: "user blocked for 3 consecutive requests"
+        severity: "info"
+        action: "notify_support"
+        
+      - name: "DDoS suspected"
+        condition: ">1000 requests/minute from single IP"
+        severity: "critical"
+        action: "block_ip_temporarily"
+
+  # Политики эскалации
+  escalation:
+    soft_limit:
+      action: "add_warning_header"
+      message: "Выбор лимита"
+    
+    hard_limit:
+      action: "block_request"
+      status_code: 429
+      message: "Превышен лимит запросов. Попробуйте позже."
+      retry_after: 60
+    
+    abuse_detected:
+      action: "temporary_ban"
+      duration: 3600  # 1 час
+      message: "Обнаружена подозрительная активность"
+      
+  # Пример конфигурации для Spring Boot
+  spring_configuration: |
+    spring:
+      cache:
+        type: redis
+        redis:
+          time-to-live: 60s
+    
+    rate-limit:
+      enabled: true
+      repository: REDIS
+      policies:
+        auth-login:
+          limit: 5
+          duration: 1m
+          type: ip
+        chat-ask:
+          limit: 20
+          duration: 1m
+          type: user
+        chat-ask-stream:
+          limit: 15
+          duration: 1m
+          type: user
+
+  # Логика вычисления лимитов
+  calculation_logic: |
+    // Псевдокод для sliding window
+    function isAllowed(userId, endpoint, limit, window) {
+      key = "rate_limit:${userId}:${endpoint}"
+      currentTime = now()
+      windowStart = currentTime - window
+      
+      // Удаляем старые записи
+      redis.zremrangebyscore(key, 0, windowStart)
+      
+      // Считаем текущие запросы
+      requestCount = redis.zcard(key)
+      
+      if (requestCount >= limit) {
+        return false
+      }
+      
+      // Добавляем текущий запрос
+      redis.zadd(key, currentTime, currentTime)
+      redis.expire(key, window)
+      
+      return true
+    }
+
+  # Отладка и тестирование
+  testing:
+    unit_tests:
+      - "test_rate_limit_allows_requests_within_limit"
+      - "test_rate_limit_blocks_requests_over_limit"
+      - "test_rate_limit_resets_after_window"
+      - "test_different_limits_for_different_endpoints"
+      - "test_rate_limit_headers_in_response"
+    
+    integration_tests:
+      - "test_concurrent_requests_respect_limit"
+      - "test_distributed_rate_limiting"
+      - "test_rate_limit_recovery_after_block"
+    
+    load_testing:
+      scenarios:
+        - name: "Нормальная нагрузка"
+          requests_per_second: 10
+          duration: 60
+          
+        - name: "Пиковая нагрузка"
+          requests_per_second: 50
+          duration: 30
+          expected_block_rate: "<10%"
+          
+        - name: "DDoS симуляция"
+          requests_per_second: 1000
+          duration: 10
+          expected_block_rate: ">95%"
