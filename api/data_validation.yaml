@@ -1,0 +1,94 @@
+validation:
+  # Валидация на уровне схемы OpenAPI
+  schema_rules:
+    AuthRequest:
+      clientId:
+        - required: true
+        - minLength: 3
+        - maxLength: 100
+        - pattern: "^[a-zA-Z0-9_-]+$"
+        - notIn: ["admin", "system", "root", "test"]
+    
+    AskRequest:
+      prompt:
+        - required: true
+        - minLength: 1
+        - maxLength: 2000
+        - sanitize: true  # удаление HTML/JS
+      dbChatId:
+        - required: true
+        - type: integer
+        - min: 1
+      image:
+        - required: true  # для анализа обязателен
+        - maxSize: 15728640  # 15MB в байтах
+        - format: ["dicom", "png", "jpg", "jpeg"]
+        - validateBase64: true
+
+  # Бизнес-правила валидации
+  business_rules:
+    image_validation:
+      steps:
+        - name: "Размер файла"
+          check: "size <= 15MB"
+          error: "Изображение слишком большое. Максимальный размер: 15MB"
+        
+        - name: "Формат файла"
+          check: "format in ['dicom', 'png', 'jpg', 'jpeg']"
+          error: "Неподдерживаемый формат изображения"
+        
+        - name: "Разрешение"
+          check: "width <= 4096 and height <= 4096"
+          error: "Слишком высокое разрешение изображения"
+        
+        - name: "Медицинская валидность"
+          check: "has_dicom_headers or is_valid_image"
+          error: "Некорректное медицинское изображение"
+    
+    prompt_validation:
+      steps:
+        - name: "Длина промпта"
+          check: "1 <= length <= 2000"
+          error: "Длина промпта должна быть от 1 до 2000 символов"
+        
+        - name: "Запрещенные слова"
+          check: "not contains ['<script>', 'javascript:', 'drop table']"
+          error: "Промпт содержит запрещенные конструкции"
+        
+        - name: "Медицинский контекст"
+          check: "contains_medical_terms or length > 10"
+          error: "Промпт должен содержать медицинский контекст"
+
+  # API валидационные middleware
+  middleware:
+    - name: "RequestValidator"
+      order: 1
+      validations:
+        - "Schema validation"
+        - "Required fields"
+        - "Data types"
+    
+    - name: "BusinessRuleValidator"
+      order: 2
+      validations:
+        - "Image validation"
+        - "Prompt validation"
+        - "User permissions"
+    
+    - name: "SecurityValidator"
+      order: 3
+      validations:
+        - "JWT token validation"
+        - "Rate limit check"
+        - "IP whitelist (если нужно)"
+
+  # Ошибки валидации
+  error_codes:
+    VALIDATION_001: "Некорректный формат clientId"
+    VALIDATION_002: "Изображение превышает максимальный размер 15MB"
+    VALIDATION_003: "Неподдерживаемый формат изображения"
+    VALIDATION_004: "Промпт слишком длинный (максимум 2000 символов)"
+    VALIDATION_005: "Некорректный ID чата"
+    VALIDATION_006: "Отсутствует обязательное поле: {field}"
+    VALIDATION_007: "Некорректный формат base64 изображения"
+    VALIDATION_008: "Изображение повреждено или нечитаемо"

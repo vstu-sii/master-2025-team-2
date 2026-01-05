@@ -1,0 +1,146 @@
+examples:
+  # Авторизация
+  auth_login_request:
+    description: "Запрос авторизации для рентгенолога"
+    method: POST
+    url: https://nash.sait.ru/auth/login
+    headers:
+      Content-Type: application/json
+    body: |
+      {
+        "clientId": "radiologist_001"
+      }
+  
+  auth_login_response:
+    description: "Успешный ответ с JWT токеном"
+    status: 200
+    headers:
+      Content-Type: application/json
+    body: |
+      {
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJyYWRpb2xvZ2lzdF8wMDEiLCJleHAiOjE2NzM4NTQwMDB9.sample-signature"
+      }
+
+  # Создание чата
+  create_chat_request:
+    description: "Создание нового чата для пациента"
+    method: POST
+    url: https://nash.sait.ru/chat
+    headers:
+      Content-Type: application/json
+      Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+    body: |
+      {
+        "patientId": "P-2024-001",
+        "studyType": "Рентген грудной клетки",
+        "metadata": {
+          "age": 45,
+          "gender": "male",
+          "reason": "Кашель с мокротой, температура 38.5°C"
+        }
+      }
+  
+  create_chat_response:
+    description: "ID созданного чата"
+    status: 200
+    body: |
+      {
+        "chatId": 12345
+      }
+
+  # Синхронный запрос
+  ask_sync_request:
+    description: "Запрос анализа рентгеновского снимка"
+    method: POST
+    url: https://nash.sait.ru/chat/ask
+    headers:
+      Content-Type: application/json
+      Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+    body: |
+      {
+        "prompt": "Проанализируйте рентгеновский снимок грудной клетки на наличие патологий. Опишите найденные изменения и дайте рекомендации.",
+        "dbChatId": 12345,
+        "image": "data:image/dicom;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAA..."
+      }
+  
+  ask_sync_response:
+    description: "Полное заключение от LLM"
+    status: 200
+    body: |
+      {
+        "messageId": 67890,
+        "chatId": 12345,
+        "role": "assistant",
+        "content": "НА ОСНОВАНИИ АНАЛИЗА РЕНТГЕНОВСКОГО СНИМКА ГРУДНОЙ КЛЕТКИ...",
+        "aiConfidence": 0.87,
+        "timestamp": "2024-01-15T10:35:22Z",
+        "processingTime": 3200,
+        "findings": [
+          {
+            "type": "pathology",
+            "name": "Пневмония",
+            "location": "Правая нижняя доля",
+            "confidence": 0.92,
+            "size": "3×4 см"
+          }
+        ],
+        "recommendations": [
+          "Консультация терапевта",
+          "Антибактериальная терапия",
+          "Контрольный снимок через 10-14 дней"
+        ],
+        "warnings": []
+      }
+
+  # Стриминг запрос
+  ask_stream_request:
+    description: "Запрос с потоковым ответом"
+    method: POST
+    url: https://nash.sait.ru/chat/ask/stream
+    headers:
+      Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+    body: |
+      (multipart/form-data)
+      prompt=Проанализируйте рентгеновский снимок
+      dbChatId=12345
+      image=<бинарные данные файла>
+  
+  ask_stream_response:
+    description: "Потоковый ответ через SSE"
+    status: 200
+    headers:
+      Content-Type: text/event-stream
+    body: |
+      event: message
+      data: {"content": "НА", "chunkId": 1}
+      
+      event: message
+      data: {"content": " ОСНОВАНИИ", "chunkId": 2}
+      
+      event: message
+      data: {"content": " АНАЛИЗА", "chunkId": 3}
+      
+      event: complete
+      data: {"messageId": 67891, "totalChunks": 45}
+
+  # Удаление чата
+  delete_chat_request:
+    description: "Удаление чата по ID"
+    method: POST
+    url: https://nash.sait.ru/chat/delete
+    headers:
+      Content-Type: application/json
+      Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+    body: |
+      {
+        "chatId": 12345
+      }
+  
+  delete_chat_response:
+    description: "Подтверждение удаления"
+    status: 200
+    body: |
+      {
+        "success": true,
+        "message": "Чат 12345 успешно удален"
+      }

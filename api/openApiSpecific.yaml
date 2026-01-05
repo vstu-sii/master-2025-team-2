@@ -1,0 +1,621 @@
+openapi: 3.0.3
+info:
+  title: Система анализа рентгеновских снимков с помощью LLM
+  description: |
+    API для обработки медицинских изображений и генерации заключений с использованием искусственного интеллекта.
+    
+    ## Важные особенности:
+    - Все изображения передаются в формате base64
+    - Максимальный размер изображения: 15MB (после кодирования ~20MB)
+    - Поддерживаемые форматы: DICOM, PNG, JPG
+    - Используется JWT аутентификация
+  version: 1.0.0
+  contact:
+    name: Техническая поддержка
+    email: support@nash.sait.ru
+  license:
+    name: Проприетарная
+    url: https://nash.sait.ru/license
+
+servers:
+  - url: https://nash.sait.ru
+    description: Продакшн-среда
+
+tags:
+  - name: Аутентификация
+    description: Эндпоинты для получения токенов доступа
+  - name: Чат
+    description: Взаимодействие с LLM для анализа медицинских изображений
+  - name: Управление
+    description: Управление историей чатов
+
+paths:
+  /auth/login:
+    post:
+      tags:
+        - Аутентификация
+      summary: Авторизация в системе
+      description: |
+        Получение JWT токена для доступа к защищенным эндпоинтам.
+        В проекте используется упрощенная аутентификация по clientId.
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthRequest'
+            examples:
+              Рентгенолог:
+                value:
+                  clientId: "radiologist_001"
+              ЛечащийВрач:
+                value:
+                  clientId: "physician_042"
+      responses:
+        '200':
+          description: Успешная авторизация
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+              examples:
+                Успех:
+                  value:
+                    token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJyYWRpb2xvZ2lzdF8wMDEiLCJleHAiOjE2NzM4NTQwMDB9.sample-signature"
+        '400':
+          description: Неверный формат запроса
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                ПустойClientId:
+                  value:
+                    timestamp: "2024-01-15T10:30:00Z"
+                    status: 400
+                    error: "Bad Request"
+                    message: "clientId не может быть пустым"
+                    path: "/auth/login"
+        '429':
+          description: Слишком много запросов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                RateLimit:
+                  value:
+                    timestamp: "2024-01-15T10:30:00Z"
+                    status: 429
+                    error: "Too Many Requests"
+                    message: "Превышен лимит запросов. Попробуйте через 60 секунд"
+                    path: "/auth/login"
+      x-rate-limit:
+        window: 60
+        maxRequests: 5
+        scope: ip
+
+  /chat:
+    post:
+      tags:
+        - Чат
+      summary: Создание нового чата
+      description: Создание новой сессии чата для анализа изображений
+      operationId: createChat
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+            examples:
+              НовыйЧат:
+                value:
+                  patientId: "P-2024-001"
+                  studyType: "Рентген грудной клетки"
+                  metadata:
+                    age: 45
+                    gender: "male"
+                    reason: "Кашель с мокротой"
+      responses:
+        '200':
+          description: ID созданного чата
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  chatId:
+                    type: integer
+                    format: int64
+                    example: 12345
+                    description: Уникальный идентификатор чата
+              examples:
+                Успех:
+                  value:
+                    chatId: 12345
+        '401':
+          description: Не авторизован
+        '429':
+          description: Слишком много запросов
+      x-rate-limit:
+        window: 60
+        maxRequests: 30
+        scope: user
+
+  /chat/ask:
+    post:
+      tags:
+        - Чат
+      summary: Синхронный запрос к LLM
+      description: |
+        Отправка запроса с изображением к LLM с ожиданием полного ответа.
+        
+        **Ограничения:**
+        - Максимальный размер изображения: 15MB (в бинарном виде)
+        - Максимальная длина промпта: 2000 символов
+        - Таймаут: 30 секунд
+      operationId: askSync
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AskRequest'
+            examples:
+              АнализСнимка:
+                value:
+                  prompt: "Проанализируйте рентгеновский снимок грудной клетки на наличие патологий. Опишите найденные изменения и дайте рекомендации."
+                  dbChatId: 12345
+                  image: "data:image/dicom;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAA..."
+      responses:
+        '200':
+          description: Успешный ответ от LLM
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+              examples:
+                Заключение:
+                  value:
+                    messageId: 67890
+                    chatId: 12345
+                    role: "assistant"
+                    content: "НА ОСНОВАНИИ АНАЛИЗА РЕНТГЕНОВСКОГО СНИМКА ГРУДНОЙ КЛЕТКИ:\n\n1. КАЧЕСТВО СНИМКА: удовлетворительное\n2. ОБНАРУЖЕННЫЕ ИЗМЕНЕНИЯ: В нижней доле правого легкого определяется инфильтративная тень с нечеткими контурами, размером 3×4 см. Воздушные бронхограммы в пределах инфильтрата.\n3. ЛЕГОЧНЫЕ ПОЛЯ: левое легкое без патологических изменений.\n4. СЕРДЕЧНО-СОСУДИСТАЯ ТЕНЬ: не расширена.\n5. ЗАКЛЮЧЕНИЕ: Рентгенологические признаки правосторонней нижнедолевой пневмонии.\n6. РЕКОМЕНДАЦИИ: Консультация терапевта, антибактериальная терапия, контрольный снимок через 10-14 дней."
+                    aiConfidence: 0.87
+                    timestamp: "2024-01-15T10:35:22Z"
+                    processingTime: 3200
+                    findings: [
+                      {
+                        "type": "pathology",
+                        "name": "Пневмония",
+                        "location": "Правая нижняя доля",
+                        "confidence": 0.92,
+                        "size": "3×4 см"
+                      }
+                    ]
+                    recommendations: [
+                      "Консультация терапевта",
+                      "Антибактериальная терапия",
+                      "Контрольный снимок через 10-14 дней"
+                    ]
+                    warnings: []
+        '400':
+          description: Неверный запрос
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                ИзображениеСлишкомБольшое:
+                  value:
+                    timestamp: "2024-01-15T10:30:00Z"
+                    status: 400
+                    error: "Bad Request"
+                    message: "Размер изображения превышает 15MB"
+                    path: "/chat/ask"
+                НеверныйФорматИзображения:
+                  value:
+                    timestamp: "2024-01-15T10:30:00Z"
+                    status: 400
+                    error: "Bad Request"
+                    message: "Неподдерживаемый формат изображения. Используйте DICOM, PNG или JPG"
+                    path: "/chat/ask"
+        '413':
+          description: Слишком большой payload
+        '429':
+          description: Слишком много запросов
+        '500':
+          description: Ошибка LLM сервиса
+      x-rate-limit:
+        window: 60
+        maxRequests: 20
+        scope: user
+
+  /chat/ask/stream:
+    post:
+      tags:
+        - Чат
+      summary: Стриминг-запрос к LLM
+      description: |
+        Отправка запроса с изображением к LLM с потоковым получением ответа через Server-Sent Events.
+        
+        **Формат запроса:** multipart/form-data
+        **Формат ответа:** text/event-stream
+      operationId: askStream
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - prompt
+                - dbChatId
+              properties:
+                prompt:
+                  type: string
+                  description: Текстовый запрос к LLM
+                  maxLength: 2000
+                  example: "Проанализируйте рентгеновский снимок"
+                dbChatId:
+                  type: string
+                  description: ID чата в базе данных
+                  pattern: '^\d+$'
+                  example: "12345"
+                image:
+                  type: string
+                  format: binary
+                  description: Изображение в формате DICOM, PNG или JPG
+            encoding:
+              image:
+                contentType: application/dicom, image/png, image/jpeg
+      responses:
+        '200':
+          description: Поток событий Server-Sent Events
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                example: |
+                  event: message
+                  data: {"content": "НА", "chunkId": 1}
+                  
+                  event: message
+                  data: {"content": " ОСНОВАНИИ", "chunkId": 2}
+                  
+                  event: message
+                  data: {"content": " АНАЛИЗА", "chunkId": 3}
+                  
+                  event: complete
+                  data: {"messageId": 67891, "totalChunks": 45}
+        '400':
+          description: Неверный запрос
+        '413':
+          description: Слишком большой файл
+        '429':
+          description: Слишком много запросов
+      x-rate-limit:
+        window: 60
+        maxRequests: 15
+        scope: user
+
+  /chat/delete:
+    post:
+      tags:
+        - Управление
+      summary: Удаление чата
+      description: Полное удаление чата и всей связанной истории из базы данных
+      operationId: deleteChat
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeleteRequest'
+            examples:
+              УдалениеЧата:
+                value:
+                  chatId: 12345
+      responses:
+        '200':
+          description: Результат удаления
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Чат успешно удален"
+              examples:
+                Успех:
+                  value:
+                    success: true
+                    message: "Чат 12345 успешно удален"
+        '404':
+          description: Чат не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                ЧатНеНайден:
+                  value:
+                    timestamp: "2024-01-15T10:30:00Z"
+                    status: 404
+                    error: "Not Found"
+                    message: "Чат с ID 99999 не найден"
+                    path: "/chat/delete"
+        '429':
+          description: Слишком много запросов
+      x-rate-limit:
+        window: 60
+        maxRequests: 10
+        scope: user
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT токен, полученный при успешной авторизации через /auth/login.
+        Формат заголовка: `Authorization: Bearer {token}`
+
+  schemas:
+    # Запросы
+    AuthRequest:
+      type: object
+      required:
+        - clientId
+      properties:
+        clientId:
+          type: string
+          description: Уникальный идентификатор клиента
+          example: "radiologist_001"
+          minLength: 3
+          maxLength: 100
+          pattern: '^[a-zA-Z0-9_\-]+$'
+      additionalProperties: false
+
+    ChatRequest:
+      type: object
+      properties:
+        patientId:
+          type: string
+          description: Идентификатор пациента
+          example: "P-2024-001"
+          maxLength: 50
+        studyType:
+          type: string
+          description: Тип исследования
+          example: "Рентген грудной клетки"
+          maxLength: 100
+        metadata:
+          type: object
+          description: Дополнительные метаданные
+          additionalProperties: true
+
+    AskRequest:
+      type: object
+      required:
+        - prompt
+        - dbChatId
+      properties:
+        prompt:
+          type: string
+          description: Текстовый запрос к LLM
+          example: "Проанализируйте рентгеновский снимок"
+          minLength: 1
+          maxLength: 2000
+        dbChatId:
+          type: integer
+          description: ID чата в базе данных
+          example: 12345
+          format: int64
+          minimum: 1
+        image:
+          type: string
+          description: |
+            Изображение в формате base64 data URL или plain base64.
+            Поддерживаемые форматы: DICOM, PNG, JPG
+          example: "data:image/dicom;base64,/9j/4AAQSkZJRg..."
+          pattern: '^(data:[\w/]+;base64,)?[A-Za-z0-9+/]+={0,2}$'
+      additionalProperties: false
+
+    DeleteRequest:
+      type: object
+      required:
+        - chatId
+      properties:
+        chatId:
+          type: integer
+          description: ID чата для удаления
+          example: 12345
+          format: int64
+          minimum: 1
+      additionalProperties: false
+
+    # Ответы
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: JWT токен для аутентификации
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+      additionalProperties: false
+
+    ChatResponse:
+      type: object
+      properties:
+        messageId:
+          type: integer
+          format: int64
+          description: Уникальный идентификатор сообщения
+          example: 67890
+        chatId:
+          type: integer
+          format: int64
+          description: ID чата
+          example: 12345
+        role:
+          type: string
+          description: Роль отправителя
+          example: "assistant"
+          enum: [assistant]
+        content:
+          type: string
+          description: Текст ответа от LLM
+          example: "НА ОСНОВАНИИ АНАЛИЗА РЕНТГЕНОВСКОГО СНИМКА..."
+        aiConfidence:
+          type: number
+          format: float
+          description: Уровень уверенности AI (0-1)
+          example: 0.87
+          minimum: 0
+          maximum: 1
+        timestamp:
+          type: string
+          format: date-time
+          description: Время генерации ответа
+          example: "2024-01-15T10:35:22Z"
+        processingTime:
+          type: integer
+          description: Время обработки в миллисекундах
+          example: 3200
+          minimum: 0
+        findings:
+          type: array
+          description: Структурированные находки
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                enum: [normal, pathology, artifact]
+              name:
+                type: string
+              location:
+                type: string
+              confidence:
+                type: number
+                format: float
+                minimum: 0
+                maximum: 1
+              size:
+                type: string
+        recommendations:
+          type: array
+          description: Рекомендации
+          items:
+            type: string
+        warnings:
+          type: array
+          description: Предупреждения
+          items:
+            type: string
+
+    ErrorResponse:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        status:
+          type: integer
+        error:
+          type: string
+        message:
+          type: string
+        path:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+
+    # Для стриминга
+    StreamChunk:
+      type: object
+      properties:
+        event:
+          type: string
+          enum: [message, error, complete]
+        data:
+          oneOf:
+            - type: object
+              properties:
+                content:
+                  type: string
+                chunkId:
+                  type: integer
+            - type: object
+              properties:
+                messageId:
+                  type: integer
+                totalChunks:
+                  type: integer
+            - type: object
+              properties:
+                error:
+                  type: string
+
+  # Расширения для валидации
+  x-validation-rules:
+    image:
+      maxSizeMB: 15
+      allowedFormats: [dicom, png, jpg, jpeg]
+      maxDimensions: "4096x4096"
+    prompt:
+      maxLength: 2000
+      minLength: 1
+      disallowedPatterns: ["<script>", "javascript:"]
+    clientId:
+      pattern: "^[a-zA-Z0-9_-]{3,100}$"
+      reservedIds: ["admin", "system", "root"]
+
+  # Политики rate limiting
+  x-rate-limiting:
+    global:
+      enabled: true
+      strategy: sliding_window
+    scopes:
+      ip:
+        description: "Ограничение по IP адресу"
+        default:
+          window: 60
+          maxRequests: 100
+      user:
+        description: "Ограничение по пользователю"
+        default:
+          window: 60
+          maxRequests: 50
+      endpoint:
+        description: "Специфичные ограничения для эндпоинтов"
+        overrides:
+          "/auth/login":
+            window: 60
+            maxRequests: 5
+          "/chat/ask":
+            window: 60
+            maxRequests: 20
+          "/chat/ask/stream":
+            window: 60
+            maxRequests: 15
+
+security:
+  - bearerAuth: []
